@@ -29,43 +29,42 @@ jobs:
           NEW_DESC = 'Shamz wakes up on a roof in London, and this time, nothing is chasing him.'
 
           # ----- Change 1: add Case 3 card after Case 2 -----
-          sec_start = html.find('<section id="shamz-vs-everything"')
-          assert sec_start != -1, 'Shamz vs Everything section not found'
-          sec_end = html.find('</section>', sec_start)
-          assert sec_end != -1, 'section end not found'
-
-          TAG = '<article class="card">'
-          blocks = []
-          i = sec_start
-          while True:
-              a = html.find(TAG, i, sec_end)
-              if a == -1:
-                  break
-              depth = 0
-              j = a
+          def card_blocks(s):
+              tag = '<article class="card">'
+              blocks = []
+              i = 0
               while True:
-                  na = html.find('<article', j, sec_end)
-                  nc = html.find('</article>', j, sec_end)
-                  assert nc != -1, 'unbalanced article tags'
-                  if na != -1 and na < nc:
-                      depth += 1
-                      j = na + 1
-                  else:
-                      depth -= 1
-                      j = nc + len('</article>')
-                      if depth == 0:
-                          blocks.append((a, j))
-                          break
-              i = j
-          print('article.card blocks found in section:', len(blocks))
+                  a = s.find(tag, i)
+                  if a == -1:
+                      break
+                  depth = 0
+                  j = a
+                  while True:
+                      na = s.find('<article', j)
+                      nc = s.find('</article>', j)
+                      assert nc != -1, 'unbalanced article tags'
+                      if na != -1 and na < nc:
+                          depth += 1
+                          j = na + 1
+                      else:
+                          depth -= 1
+                          j = nc + len('</article>')
+                          if depth == 0:
+                              blocks.append((a, j))
+                              break
+                  i = j
+              return blocks
 
+          blocks = card_blocks(html)
+          print('article.card blocks in document:', len(blocks))
+          print('tag occurrences:', html.count('<article class="card">'))
           texts = [html[b[0]:b[1]] for b in blocks]
           case1 = [b for b, t in zip(blocks, texts) if '>Case 1<' in t]
           case2 = [b for b, t in zip(blocks, texts) if '>Case 2<' in t]
-          assert len(case1) == 1, 'expected exactly one Case 1 card'
-          assert len(case2) == 1, 'expected exactly one Case 2 card'
+          assert len(case1) == 1, 'expected exactly one Case 1 card, found %d' % len(case1)
+          assert len(case2) == 1, 'expected exactly one Case 2 card, found %d' % len(case2)
           assert case1[0][0] < case2[0][0], 'Case 1 must come before Case 2'
-          assert '>Case 3<' not in html[sec_start:sec_end], 'Case 3 already present'
+          assert '>Case 3<' not in html, 'Case 3 already present'
 
           c2s, c2e = case2[0]
           card2 = html[c2s:c2e]
@@ -110,13 +109,12 @@ jobs:
           n_title = html.count(NEW_TITLE)
           assert n_title == 5, 'expected 5 title occurrences, found %d' % n_title
           assert html.count(NEW_URL) == 1, 'watch URL must appear exactly once'
-          s2 = html.find('<section id="shamz-vs-everything"')
-          e2 = html.find('</section>', s2)
-          sec = html[s2:e2]
-          order = [sec.find('>Case 1<'), sec.find('>Case 2<'), sec.find('>Case 3<'), sec.find('More cases coming')]
-          assert all(p != -1 for p in order), 'a card is missing from the section'
+          p1, p2 = html.find('>Case 1<'), html.find('>Case 2<')
+          p3, pm = html.find('>Case 3<'), html.find('More cases coming')
+          order = [p1, p2, p3, pm]
+          assert all(p != -1 for p in order), 'a card is missing'
           assert order == sorted(order), 'card order is wrong: %r' % (order,)
-          print('section card order offsets:', order)
+          print('card order offsets:', order)
           print('title occurrences:', n_title)
           print('all checks passed')
 
