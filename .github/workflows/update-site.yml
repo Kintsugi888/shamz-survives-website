@@ -1,4 +1,4 @@
-name: Publish EP03 site update
+name: Publish site update
 
 on:
   workflow_dispatch:
@@ -12,23 +12,23 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Apply Case 3 card and EP03 label updates
+      - name: Apply Case 3 VIRAL card and EP03 label updates
         run: |
           python3 - <<'PYEOF'
-          import re
-
           SRC = 'shamz-survives-website.html'
           raw = open(SRC, 'rb').read()
           print('source size in bytes:', len(raw))
           assert len(raw) == 8882835, 'source size mismatch, aborting'
           html = raw.decode('utf-8')
 
-          NEW_TITLE = "The Neighbour Was My Wife. The Kids Weren't Human."
-          NEW_URL = 'https://www.youtube.com/watch?v=ktI1J5EfjQM'
-          NEW_DURATION = '29:17'
-          NEW_DESC = 'Shamz wakes up on a roof in London, and this time, nothing is chasing him.'
+          EP03_TITLE = "The Neighbour Was My Wife. The Kids Weren't Human."
+          VIRAL_URL = 'https://www.youtube.com/watch?v=jt39rAM9mCw'
+          VIRAL_H3 = 'Shamz vs VIRAL'
+          VIRAL_STRONG = 'My Live Chat Knew What I Never Posted | VIRAL'
+          VIRAL_META = 'Published 30 Oct 2026 &middot; 48:06 &middot; Shamz Survives on YouTube.'
+          VIRAL_DESC = 'A live comment repeats something Shamz never posted. Then the recording starts telling a different story.'
 
-          # ----- Change 1: add Case 3 card after Case 2 -----
+          # ----- Change 1: add Case 3 (VIRAL) card after Case 2 -----
           def card_blocks(s):
               tag = '<article class="card">'
               blocks = []
@@ -49,9 +49,9 @@ jobs:
                       else:
                           depth -= 1
                           j = nc + len('</article>')
-                          if depth == 0:
-                              blocks.append((a, j))
-                              break
+                      if depth == 0:
+                          blocks.append((a, j))
+                          break
                   i = j
               return blocks
 
@@ -65,38 +65,36 @@ jobs:
           assert len(case2) == 1, 'expected exactly one Case 2 card, found %d' % len(case2)
           assert case1[0][0] < case2[0][0], 'Case 1 must come before Case 2'
           assert '>Case 3<' not in html, 'Case 3 already present'
-
+          assert 'jt39rAM9mCw' not in html, 'VIRAL video URL already present'
           c2s, c2e = case2[0]
           card2 = html[c2s:c2e]
           card3 = card2
           swaps = [
               ('>Case 2<', '>Case 3<'),
               ('Watch Case 2 on YouTube', 'Watch Case 3 on YouTube'),
-              ('https://www.youtube.com/watch?v=IQ9dz-Z-F8U', NEW_URL),
+              ('https://www.youtube.com/watch?v=IQ9dz-Z-F8U', VIRAL_URL),
+              ('<h3>Shamz vs the Flood</h3>', '<h3>' + VIRAL_H3 + '</h3>'),
               ('<strong>No Way Down. The Flood Took the Stairs.</strong>',
-               '<strong>' + NEW_TITLE + '</strong>'),
-              ('17:38 &middot; Shamz Survives on YouTube.',
-               NEW_DURATION + ' &middot; Shamz Survives on YouTube.'),
-              ('The stairs are flooded. The way out is no longer the way down.', NEW_DESC),
+               '<strong>' + VIRAL_STRONG + '</strong>'),
+              ('17:38 &middot; Shamz Survives on YouTube.', VIRAL_META),
+              ('The stairs are flooded. The way out is no longer the way down.', VIRAL_DESC),
           ]
           for old, new in swaps:
               n = card3.count(old)
               assert n == 1, 'expected 1 occurrence of %r in Case 2 card, found %d' % (old, n)
               card3 = card3.replace(old, new)
-          card3 = re.sub(r'<h3>.*?</h3>', '<h3>Shamz vs the Neighbour</h3>', card3, count=1)
-          assert '<h3>Shamz vs the Neighbour</h3>' in card3, 'h3 replacement failed'
-
+          assert 'ktI1J5EfjQM' not in card3, 'EP03 video must not appear in the Shamz vs Everything card'
           line_start = html.rfind('\n', 0, c2s) + 1
           indent = html[line_start:c2s]
           html = html[:c2e] + '\n' + indent + card3 + html[c2e:]
-          print('inserted Case 3 card after Case 2')
+          print('inserted Case 3 VIRAL card after Case 2')
 
           # ----- Change 2: correct EP03 'grid goes down' labels -----
           subs = [
-              ('EP03 — the grid goes down', 'EP03 — ' + NEW_TITLE),
-              ('Episode 03 — The Grid Goes Down', 'Episode 03 — ' + NEW_TITLE),
-              ('Next up is EP03: the grid goes down.', 'Next up is EP03: ' + NEW_TITLE + '.'),
-              ('The grid goes down — EP03 · In production', NEW_TITLE + ' — EP03 · In production'),
+              ('EP03 — the grid goes down', 'EP03 — ' + EP03_TITLE),
+              ('Episode 03 — The Grid Goes Down', 'Episode 03 — ' + EP03_TITLE),
+              ('Next up is EP03: the grid goes down.', 'Next up is EP03: ' + EP03_TITLE + '.'),
+              ('The grid goes down — EP03 · In production', EP03_TITLE + ' — EP03 · In production'),
           ]
           for old, new in subs:
               n = html.count(old)
@@ -106,18 +104,18 @@ jobs:
 
           # ----- Verification -----
           assert 'grid goes down' not in html.lower(), 'stale grid premise still present'
-          n_title = html.count(NEW_TITLE)
-          assert n_title == 5, 'expected 5 title occurrences, found %d' % n_title
-          assert html.count(NEW_URL) == 1, 'watch URL must appear exactly once'
+          n_title = html.count(EP03_TITLE)
+          assert n_title == 4, 'expected 4 EP03 title occurrences, found %d' % n_title
+          assert html.count(VIRAL_URL) == 1, 'VIRAL watch URL must appear exactly once'
+          assert 'ktI1J5EfjQM' not in html, 'EP03 video URL must not appear in this file'
           p1, p2 = html.find('>Case 1<'), html.find('>Case 2<')
           p3, pm = html.find('>Case 3<'), html.find('More cases coming')
           order = [p1, p2, p3, pm]
           assert all(p != -1 for p in order), 'a card is missing'
           assert order == sorted(order), 'card order is wrong: %r' % (order,)
           print('card order offsets:', order)
-          print('title occurrences:', n_title)
+          print('EP03 title occurrences:', n_title)
           print('all checks passed')
-
           open(SRC, 'w', encoding='utf-8').write(html)
           print('wrote', SRC)
           PYEOF
@@ -128,5 +126,5 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git mv -f shamz-survives-website.html index.html
           git status --short
-          git commit -m "Publish EP03 update: add Case 3 card, correct Next Up EP03 labels"
+          git commit -m "Publish update: add Case 3 VIRAL card, correct Next Up EP03 labels"
           git push
