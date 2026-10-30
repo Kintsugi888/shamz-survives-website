@@ -1,0 +1,134 @@
+name: Publish EP03 site update
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Apply Case 3 card and EP03 label updates
+        run: |
+          python3 - <<'PYEOF'
+          import re
+
+          SRC = 'shamz-survives-website.html'
+          raw = open(SRC, 'rb').read()
+          print('source size in bytes:', len(raw))
+          assert len(raw) == 8882835, 'source size mismatch, aborting'
+          html = raw.decode('utf-8')
+
+          NEW_TITLE = "The Neighbour Was My Wife. The Kids Weren't Human."
+          NEW_URL = 'https://www.youtube.com/watch?v=ktI1J5EfjQM'
+          NEW_DURATION = '29:17'
+          NEW_DESC = 'Shamz wakes up on a roof in London, and this time, nothing is chasing him.'
+
+          # ----- Change 1: add Case 3 card after Case 2 -----
+          sec_start = html.find('<section id="shamz-vs-everything"')
+          assert sec_start != -1, 'Shamz vs Everything section not found'
+          sec_end = html.find('</section>', sec_start)
+          assert sec_end != -1, 'section end not found'
+
+          TAG = '<article class="card">'
+          blocks = []
+          i = sec_start
+          while True:
+              a = html.find(TAG, i, sec_end)
+              if a == -1:
+                  break
+              depth = 0
+              j = a
+              while True:
+                  na = html.find('<article', j, sec_end)
+                  nc = html.find('</article>', j, sec_end)
+                  assert nc != -1, 'unbalanced article tags'
+                  if na != -1 and na < nc:
+                      depth += 1
+                      j = na + 1
+                  else:
+                      depth -= 1
+                      j = nc + len('</article>')
+                      if depth == 0:
+                          blocks.append((a, j))
+                          break
+              i = j
+          print('article.card blocks found in section:', len(blocks))
+
+          texts = [html[b[0]:b[1]] for b in blocks]
+          case1 = [b for b, t in zip(blocks, texts) if '>Case 1<' in t]
+          case2 = [b for b, t in zip(blocks, texts) if '>Case 2<' in t]
+          assert len(case1) == 1, 'expected exactly one Case 1 card'
+          assert len(case2) == 1, 'expected exactly one Case 2 card'
+          assert case1[0][0] < case2[0][0], 'Case 1 must come before Case 2'
+          assert '>Case 3<' not in html[sec_start:sec_end], 'Case 3 already present'
+
+          c2s, c2e = case2[0]
+          card2 = html[c2s:c2e]
+          card3 = card2
+          swaps = [
+              ('>Case 2<', '>Case 3<'),
+              ('Watch Case 2 on YouTube', 'Watch Case 3 on YouTube'),
+              ('https://www.youtube.com/watch?v=IQ9dz-Z-F8U', NEW_URL),
+              ('<strong>No Way Down. The Flood Took the Stairs.</strong>',
+               '<strong>' + NEW_TITLE + '</strong>'),
+              ('17:38 &middot; Shamz Survives on YouTube.',
+               NEW_DURATION + ' &middot; Shamz Survives on YouTube.'),
+              ('The stairs are flooded. The way out is no longer the way down.', NEW_DESC),
+          ]
+          for old, new in swaps:
+              n = card3.count(old)
+              assert n == 1, 'expected 1 occurrence of %r in Case 2 card, found %d' % (old, n)
+              card3 = card3.replace(old, new)
+          card3 = re.sub(r'<h3>.*?</h3>', '<h3>Shamz vs the Neighbour</h3>', card3, count=1)
+          assert '<h3>Shamz vs the Neighbour</h3>' in card3, 'h3 replacement failed'
+
+          line_start = html.rfind('\n', 0, c2s) + 1
+          indent = html[line_start:c2s]
+          html = html[:c2e] + '\n' + indent + card3 + html[c2e:]
+          print('inserted Case 3 card after Case 2')
+
+          # ----- Change 2: correct EP03 'grid goes down' labels -----
+          subs = [
+              ('EP03 — the grid goes down', 'EP03 — ' + NEW_TITLE),
+              ('Episode 03 — The Grid Goes Down', 'Episode 03 — ' + NEW_TITLE),
+              ('Next up is EP03: the grid goes down.', 'Next up is EP03: ' + NEW_TITLE + '.'),
+              ('The grid goes down — EP03 · In production', NEW_TITLE + ' — EP03 · In production'),
+          ]
+          for old, new in subs:
+              n = html.count(old)
+              assert n == 1, 'expected 1 occurrence of %r, found %d' % (old, n)
+              html = html.replace(old, new)
+          print('EP03 labels corrected')
+
+          # ----- Verification -----
+          assert 'grid goes down' not in html.lower(), 'stale grid premise still present'
+          n_title = html.count(NEW_TITLE)
+          assert n_title == 5, 'expected 5 title occurrences, found %d' % n_title
+          assert html.count(NEW_URL) == 1, 'watch URL must appear exactly once'
+          s2 = html.find('<section id="shamz-vs-everything"')
+          e2 = html.find('</section>', s2)
+          sec = html[s2:e2]
+          order = [sec.find('>Case 1<'), sec.find('>Case 2<'), sec.find('>Case 3<'), sec.find('More cases coming')]
+          assert all(p != -1 for p in order), 'a card is missing from the section'
+          assert order == sorted(order), 'card order is wrong: %r' % (order,)
+          print('section card order offsets:', order)
+          print('title occurrences:', n_title)
+          print('all checks passed')
+
+          open(SRC, 'w', encoding='utf-8').write(html)
+          print('wrote', SRC)
+          PYEOF
+
+      - name: Rename to index.html, commit and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git mv -f shamz-survives-website.html index.html
+          git status --short
+          git commit -m "Publish EP03 update: add Case 3 card, correct Next Up EP03 labels"
+          git push
